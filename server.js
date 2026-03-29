@@ -29,17 +29,23 @@ connectDB();
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 /**
- * CORS: with `credentials: true`, the browser requires a concrete
- * `Access-Control-Allow-Origin` (not `*`). Set `CORS_ORIGINS` on the API host
- * (comma-separated), e.g. https://www.vikashtechsolution.com,https://vikashtechsolution.com
- * If unset, `origin: true` reflects the request Origin (fine for local dev).
+ * CORS (env `CORS_ORIGINS`):
+ * - Unset or empty: reflect request Origin (`origin: true`) + credentials.
+ * - `*` or `all` (case-insensitive): any origin allowed (still reflects Origin so credentials work).
+ * - Otherwise: comma-separated allowlist, e.g. https://a.com,https://b.com
  */
 function corsOptions() {
   const raw = process.env.CORS_ORIGINS;
-  if (!raw || !String(raw).trim()) {
+  const trimmed = raw != null ? String(raw).trim() : "";
+  if (!trimmed) {
     return { origin: true, credentials: true };
   }
-  const allowed = String(raw)
+  const allowAny = /^(?:\*|all)$/i.test(trimmed);
+  if (allowAny) {
+    return { origin: true, credentials: true };
+  }
+
+  const allowed = trimmed
     .split(",")
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
