@@ -28,14 +28,34 @@ connectDB();
 // Serve uploaded files (local fallback when R2 is not configured)
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// Allow any origin for now (reflects request Origin; works with credentials: true).
-// Replace with an explicit allowlist before production.
-app.use(
-  cors({
-    origin: true,
+/**
+ * CORS: with `credentials: true`, the browser requires a concrete
+ * `Access-Control-Allow-Origin` (not `*`). Set `CORS_ORIGINS` on the API host
+ * (comma-separated), e.g. https://www.vikashtechsolution.com,https://vikashtechsolution.com
+ * If unset, `origin: true` reflects the request Origin (fine for local dev).
+ */
+function corsOptions() {
+  const raw = process.env.CORS_ORIGINS;
+  if (!raw || !String(raw).trim()) {
+    return { origin: true, credentials: true };
+  }
+  const allowed = String(raw)
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return {
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/$/, "");
+      if (allowed.includes(normalized)) return callback(null, true);
+      callback(null, false);
+    },
     credentials: true,
-  })
-);
+  };
+}
+
+app.use(cors(corsOptions()));
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
