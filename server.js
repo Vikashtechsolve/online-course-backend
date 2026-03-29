@@ -28,31 +28,11 @@ connectDB();
 // Serve uploaded files (local fallback when R2 is not configured)
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-const defaultOrigins = [
-  process.env.ADMIN_FRONTEND_URL || "http://localhost:5174",
-  process.env.STUDENT_FRONTEND_URL || "http://localhost:5173",
-  "http://localhost:3000",
-];
-const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-const allowedOrigins = [...new Set([...defaultOrigins, ...extraOrigins])];
-
+// Allow any origin for now (reflects request Origin; works with credentials: true).
+// Replace with an explicit allowlist before production.
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Local dev: any localhost / 127.0.0.1 port (Vite port changes, LAN testing)
-      if (
-        process.env.NODE_ENV !== "production" &&
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
+    origin: true,
     credentials: true,
   })
 );
