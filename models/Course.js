@@ -37,7 +37,6 @@ const courseSchema = new mongoose.Schema(
 
 // slug unique per batch
 courseSchema.index({ batch: 1, slug: 1 }, { unique: true });
-courseSchema.index({ batch: 1 });
 courseSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model("Course", courseSchema);

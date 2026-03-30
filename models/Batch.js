@@ -32,7 +32,6 @@ const batchSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-batchSchema.index({ slug: 1 });
 batchSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model("Batch", batchSchema);

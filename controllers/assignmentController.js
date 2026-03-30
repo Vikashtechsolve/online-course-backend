@@ -3,29 +3,7 @@ const AssignmentSubmission = require("../models/AssignmentSubmission");
 const Course = require("../models/Course");
 const CourseTeacher = require("../models/CourseTeacher");
 const CourseStudent = require("../models/CourseStudent");
-const {
-  uploadToR2,
-  uploadToLocal,
-  isR2Configured,
-} = require("../services/uploadService");
-
-const baseUrl = () =>
-  process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-
-async function uploadFile(file, folder) {
-  if (!file || !file.buffer) return null;
-  try {
-    if (isR2Configured()) {
-      const result = await uploadToR2(file, folder);
-      return result.url;
-    }
-    const result = await uploadToLocal(file, folder, baseUrl());
-    return result.url;
-  } catch (err) {
-    console.error("Upload error:", err);
-    return null;
-  }
-}
+const { uploadFileAndGetUrl } = require("../services/uploadService");
 
 // GET /api/assignments — list assignments
 const getAssignments = async (req, res) => {
@@ -90,7 +68,7 @@ const createAssignment = async (req, res) => {
 
     let attachmentUrl = "";
     if (req.file) {
-      attachmentUrl = await uploadFile(req.file, "assignments") || "";
+      attachmentUrl = await uploadFileAndGetUrl(req.file, "assignments") || "";
     }
 
     const assignment = await Assignment.create({
@@ -155,7 +133,7 @@ const updateAssignment = async (req, res) => {
     if (estimatedTime !== undefined) assignment.estimatedTime = estimatedTime.trim();
 
     if (req.file) {
-      assignment.attachmentUrl = await uploadFile(req.file, "assignments") || assignment.attachmentUrl;
+      assignment.attachmentUrl = await uploadFileAndGetUrl(req.file, "assignments") || assignment.attachmentUrl;
     }
 
     await assignment.save();

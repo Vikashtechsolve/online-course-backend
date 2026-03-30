@@ -1,10 +1,5 @@
 const fs = require("fs").promises;
-const {
-  PutObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-} = require("@aws-sdk/client-s3");
-const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const path = require("path");
 const crypto = require("crypto");
 
@@ -77,14 +72,6 @@ async function deleteFromR2(key) {
   await r2Client.send(command).catch(() => {});
 }
 
-async function getSignedDownloadUrl(key, expiresIn = 3600) {
-  const command = new GetObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME,
-    Key: key,
-  });
-  return getSignedUrl(r2Client, command, { expiresIn });
-}
-
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 async function uploadToLocal(file, folder, baseUrl) {
@@ -109,13 +96,31 @@ async function deleteLocalFile(url) {
   await fs.unlink(filePath).catch(() => {});
 }
 
+function getApiBaseUrl() {
+  return process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+}
+
+async function uploadFileAndGetUrl(file, folder) {
+  if (!file || !file.buffer) return null;
+  try {
+    if (isR2Configured()) {
+      return (await uploadToR2(file, folder)).url;
+    }
+    return (await uploadToLocal(file, folder, getApiBaseUrl())).url;
+  } catch (err) {
+    console.error("Upload error:", err);
+    return null;
+  }
+}
+
 module.exports = {
   uploadToR2,
   uploadBufferToR2,
   deleteFromR2,
-  getSignedDownloadUrl,
   isR2Configured,
   uploadToLocal,
   isLocalAvatarUrl,
   deleteLocalFile,
+  getApiBaseUrl,
+  uploadFileAndGetUrl,
 };

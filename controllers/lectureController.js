@@ -3,30 +3,8 @@ const LectureDiscussion = require("../models/LectureDiscussion");
 const Course = require("../models/Course");
 const CourseTeacher = require("../models/CourseTeacher");
 const CourseStudent = require("../models/CourseStudent");
-const {
-  uploadToR2,
-  uploadToLocal,
-  isR2Configured,
-} = require("../services/uploadService");
+const { uploadFileAndGetUrl } = require("../services/uploadService");
 const { transcodeAndUploadHLS } = require("../services/hlsService");
-
-const baseUrl = () =>
-  process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-
-async function uploadFile(file, folder) {
-  if (!file || !file.buffer) return null;
-  try {
-    if (isR2Configured()) {
-      const result = await uploadToR2(file, folder);
-      return result.url;
-    }
-    const result = await uploadToLocal(file, folder, baseUrl());
-    return result.url;
-  } catch (err) {
-    console.error("Upload error:", err);
-    return null;
-  }
-}
 
 // GET /api/lectures — list lectures (filter by course)
 const getLectures = async (req, res) => {
@@ -184,14 +162,14 @@ const uploadLectureMaterials = async (req, res) => {
     if (req.files?.video?.[0]) {
       const videoFile = req.files.video[0];
       const hlsUrl = await transcodeAndUploadHLS(videoFile.buffer, String(lecture._id));
-      updates.videoUrl = hlsUrl || (await uploadFile(videoFile, "lectures/videos")) || lecture.videoUrl;
+      updates.videoUrl = hlsUrl || (await uploadFileAndGetUrl(videoFile, "lectures/videos")) || lecture.videoUrl;
     }
     if (req.files?.notesPdf?.[0]) {
-      updates["notes.pdf"] = await uploadFile(req.files.notesPdf[0], "lectures/notes") || lecture.notes?.pdf;
+      updates["notes.pdf"] = await uploadFileAndGetUrl(req.files.notesPdf[0], "lectures/notes") || lecture.notes?.pdf;
     }
     if (req.files?.pptFile?.[0]) {
       updates["ppt.fileUrl"] =
-        (await uploadFile(req.files.pptFile[0], "lectures/ppt")) ||
+        (await uploadFileAndGetUrl(req.files.pptFile[0], "lectures/ppt")) ||
         lecture.ppt?.fileUrl ||
         "";
     }

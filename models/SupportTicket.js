@@ -37,13 +37,11 @@ const supportTicketSchema = new mongoose.Schema(
     ticketNumber: {
       type: String,
       unique: true,
-      index: true,
     },
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, required: true, trim: true, maxlength: 20000 },
@@ -55,13 +53,13 @@ const supportTicketSchema = new mongoose.Schema(
       type: String,
       enum: ["open", "resolved"],
       default: "open",
-      index: true,
     },
     messages: [messageSchema],
   },
   { timestamps: true }
 );
 
+supportTicketSchema.index({ status: 1 });
 supportTicketSchema.index({ student: 1, status: 1, updatedAt: -1 });
 
 module.exports = mongoose.model("SupportTicket", supportTicketSchema);

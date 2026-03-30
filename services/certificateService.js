@@ -1,6 +1,8 @@
+const fs = require("fs").promises;
+const path = require("path");
 const PDFDocument = require("pdfkit");
 const Certificate = require("../models/Certificate");
-const { uploadBufferToR2, isR2Configured } = require("./uploadService");
+const { uploadBufferToR2, isR2Configured, getApiBaseUrl } = require("./uploadService");
 
 const BORDER_WIDTH = 8;
 const RED = "#B11C20";
@@ -114,10 +116,7 @@ async function createAndStoreCertificate(student, course, issuedBy) {
   const pdfBuffer = await generateCertificatePDF(student, course, certificateId, issuedAt);
 
   let pdfUrl = "";
-  const fs = require("fs").promises;
-  const path = require("path");
   const fileName = `${course._id}-${Date.now()}.pdf`;
-  const certDir = path.join(process.cwd(), "uploads", "certificates", String(student._id));
 
   try {
     if (isR2Configured()) {
@@ -128,11 +127,10 @@ async function createAndStoreCertificate(student, course, issuedBy) {
     // fallback to local
   }
   if (!pdfUrl) {
+    const certDir = path.join(process.cwd(), "uploads", "certificates", String(student._id));
     await fs.mkdir(certDir, { recursive: true });
-    const filePath = path.join(certDir, fileName);
-    await fs.writeFile(filePath, pdfBuffer);
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:3000";
-    pdfUrl = `${baseUrl.replace(/\/$/, "")}/uploads/certificates/${student._id}/${fileName}`;
+    await fs.writeFile(path.join(certDir, fileName), pdfBuffer);
+    pdfUrl = `${getApiBaseUrl()}/uploads/certificates/${student._id}/${fileName}`;
   }
 
   const certificate = await Certificate.create({

@@ -3,47 +3,10 @@ const path = require("path");
 const os = require("os");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
-const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const crypto = require("crypto");
-
-let r2Client;
-try {
-  r2Client = require("../config/r2");
-} catch {
-  r2Client = null;
-}
+const { isR2Configured, uploadBufferToR2 } = require("./uploadService");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
-
-function isR2Configured() {
-  if (process.env.USE_LOCAL_UPLOADS === "true") return false;
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKey = process.env.R2_ACCESS_KEY_ID;
-  const secretKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.R2_BUCKET_NAME;
-  const placeholder = /your_|^$/i;
-  return (
-    accountId &&
-    accessKey &&
-    secretKey &&
-    bucket &&
-    !placeholder.test(String(accountId)) &&
-    !placeholder.test(String(accessKey)) &&
-    !placeholder.test(String(secretKey)) &&
-    !placeholder.test(String(bucket))
-  );
-}
-
-async function uploadBufferToR2(key, buffer, contentType) {
-  const command = new PutObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME,
-    Key: key,
-    Body: buffer,
-    ContentType: contentType,
-  });
-  await r2Client.send(command);
-  return `${process.env.R2_PUBLIC_URL}/${key}`;
-}
 
 /**
  * Transcode video to HLS and upload segments to R2.
@@ -52,7 +15,7 @@ async function uploadBufferToR2(key, buffer, contentType) {
  * @returns {Promise<string|null>} - URL of the master m3u8, or null on failure
  */
 async function transcodeAndUploadHLS(buffer, lectureId) {
-  if (!isR2Configured() || !r2Client) {
+  if (!isR2Configured()) {
     console.error("R2 not configured; HLS upload skipped");
     return null;
   }
@@ -110,7 +73,4 @@ async function transcodeAndUploadHLS(buffer, lectureId) {
   }
 }
 
-module.exports = {
-  transcodeAndUploadHLS,
-  isR2Configured,
-};
+module.exports = { transcodeAndUploadHLS };

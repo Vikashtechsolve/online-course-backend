@@ -4,8 +4,6 @@ const CourseLeadRegistration = require("../models/CourseLeadRegistration");
 const { COURSE_TYPES } = require("../models/CourseIntakeBatch");
 const { MARKETING_STATUSES } = require("../models/CourseLeadRegistration");
 
-const STAFF_ROLES = ["superadmin", "admin", "coordinator"];
-
 function courseTypeLabel(type) {
   if (type === "fullstack_developer") return "Full Stack MERN";
   if (type === "data_analytics") return "Data Analytics";
@@ -382,4 +380,3 @@ exports.exportRegistrations = async (req, res) => {
   }
 };
 
-exports.STAFF_ROLES = STAFF_ROLES;

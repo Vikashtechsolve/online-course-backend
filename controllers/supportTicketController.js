@@ -1,29 +1,7 @@
 const SupportTicket = require("../models/SupportTicket");
-const {
-  uploadToR2,
-  uploadToLocal,
-  isR2Configured,
-} = require("../services/uploadService");
+const { uploadFileAndGetUrl } = require("../services/uploadService");
 
 const STAFF_ROLES = ["superadmin", "admin", "coordinator", "teacher"];
-
-const apiBaseUrl = () =>
-  process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-
-async function uploadTicketFile(file) {
-  if (!file || !file.buffer) return "";
-  try {
-    if (isR2Configured()) {
-      const result = await uploadToR2(file, "support-tickets");
-      return result.url;
-    }
-    const result = await uploadToLocal(file, "support-tickets", apiBaseUrl());
-    return result.url;
-  } catch (err) {
-    console.error("Support ticket upload error:", err);
-    return "";
-  }
-}
 
 async function generateTicketNumber() {
   const year = new Date().getFullYear();
@@ -40,11 +18,6 @@ function isStaff(user) {
   return user && STAFF_ROLES.includes(user.role);
 }
 
-function ticketToJSON(doc) {
-  const o = doc.toObject ? doc.toObject({ virtuals: true }) : doc;
-  return o;
-}
-
 // POST /api/tickets — student creates ticket (multipart: fields + optional file)
 const createTicket = async (req, res) => {
   try {
@@ -59,7 +32,7 @@ const createTicket = async (req, res) => {
 
     let attachmentUrl = "";
     if (req.file) {
-      attachmentUrl = await uploadTicketFile(req.file);
+      attachmentUrl = await uploadFileAndGetUrl(req.file, "support-tickets") || "";
       if (!attachmentUrl) {
         return res.status(500).json({ message: "Failed to upload attachment. Try again." });
       }
@@ -91,7 +64,7 @@ const createTicket = async (req, res) => {
       .populate("student", "name email")
       .populate("messages.author", "name email role");
 
-    res.status(201).json({ ticket: ticketToJSON(populated) });
+    res.status(201).json({ ticket: populated });
   } catch (error) {
     console.error("Create ticket error:", error);
     res.status(500).json({ message: "Server error" });
@@ -162,7 +135,7 @@ const getTicket = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    res.json({ ticket: ticketToJSON(ticket) });
+    res.json({ ticket });
   } catch (error) {
     console.error("Get ticket error:", error);
     res.status(500).json({ message: "Server error" });
@@ -203,7 +176,7 @@ const addStudentReply = async (req, res) => {
       .populate("student", "name email")
       .populate("messages.author", "name email role");
 
-    res.json({ ticket: ticketToJSON(populated) });
+    res.json({ ticket: populated });
   } catch (error) {
     console.error("Student reply error:", error);
     res.status(500).json({ message: "Server error" });
@@ -240,7 +213,7 @@ const addStaffReply = async (req, res) => {
       .populate("student", "name email")
       .populate("messages.author", "name email role");
 
-    res.json({ ticket: ticketToJSON(populated) });
+    res.json({ ticket: populated });
   } catch (error) {
     console.error("Staff reply error:", error);
     res.status(500).json({ message: "Server error" });
@@ -281,7 +254,7 @@ const reopenTicket = async (req, res) => {
       .populate("student", "name email")
       .populate("messages.author", "name email role");
 
-    res.json({ ticket: ticketToJSON(populated) });
+    res.json({ ticket: populated });
   } catch (error) {
     console.error("Reopen ticket error:", error);
     res.status(500).json({ message: "Server error" });

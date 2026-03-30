@@ -143,8 +143,8 @@ const getCourseById = async (req, res) => {
     }
 
     const [lectures, assignments, teachers, coordinators, students] = await Promise.all([
-      Lecture.find({ course: course._id }).countDocuments(),
-      Assignment.find({ course: course._id }).countDocuments(),
+      Lecture.countDocuments({ course: course._id }),
+      Assignment.countDocuments({ course: course._id }),
       CourseTeacher.find({ course: course._id }).populate("teacher", "name email avatar"),
       CourseCoordinator.find({ course: course._id }).populate("coordinator", "name email avatar"),
       CourseStudent.find({ course: course._id })
