@@ -36,47 +36,59 @@ const getCourses = async (req, res) => {
 
     let courses = await Course.find(filter)
       .populate("batch", "name slug")
-      .sort({ order: 1, createdAt: 1 });
+      .sort({ order: 1, createdAt: 1 })
+      .lean();
 
     if (teacher) {
-      const ct = await CourseTeacher.find({ teacher }).select("course");
+      const ct = await CourseTeacher.find({ teacher }).select("course").lean();
       const ids = ct.map((c) => c.course);
       courses = courses.filter((c) => ids.some((id) => id.toString() === c._id.toString()));
     }
 
     if (coordinator) {
-      const cc = await CourseCoordinator.find({ coordinator: coordinator }).select("course");
+      const cc = await CourseCoordinator.find({ coordinator: coordinator }).select("course").lean();
       const ids = cc.map((c) => c.course);
       courses = courses.filter((c) => ids.some((id) => id.toString() === c._id.toString()));
     }
 
     let enrollmentMap = new Map();
     if (student) {
-      const csList = await CourseStudent.find({ student }).select("course completedAt");
+      const csList = await CourseStudent.find({ student }).select("course completedAt").lean();
       const ids = csList.map((c) => c.course.toString());
       csList.forEach((cs) => enrollmentMap.set(cs.course.toString(), { completedAt: cs.completedAt }));
       courses = courses.filter((c) => ids.includes(c._id.toString()));
     }
 
-    const withCounts = await Promise.all(
-      courses.map(async (c) => {
-        const [lectureCount, studentCount, teacherCount, coordinatorCount] = await Promise.all([
-          Lecture.countDocuments({ course: c._id }),
-          CourseStudent.countDocuments({ course: c._id }),
-          CourseTeacher.countDocuments({ course: c._id }),
-          CourseCoordinator.countDocuments({ course: c._id }),
-        ]);
-        const enrollment = enrollmentMap.get(c._id.toString());
-        return {
-          ...c.toObject(),
-          lectures: lectureCount,
-          students: studentCount,
-          teachers: teacherCount,
-          coordinators: coordinatorCount,
-          completedAt: enrollment?.completedAt || null,
-        };
-      })
-    );
+    const courseIds = courses.map((c) => c._id);
+    const countPipeline = (Model) => [
+      { $match: { course: { $in: courseIds } } },
+      { $group: { _id: "$course", count: { $sum: 1 } } },
+    ];
+    const [lectureCounts, studentCounts, teacherCounts, coordinatorCounts] = await Promise.all([
+      Lecture.aggregate(countPipeline(Lecture)),
+      CourseStudent.aggregate(countPipeline(CourseStudent)),
+      CourseTeacher.aggregate(countPipeline(CourseTeacher)),
+      CourseCoordinator.aggregate(countPipeline(CourseCoordinator)),
+    ]);
+
+    const toMap = (arr) => new Map(arr.map((r) => [r._id.toString(), r.count]));
+    const lectureMap = toMap(lectureCounts);
+    const studentMap = toMap(studentCounts);
+    const teacherMap = toMap(teacherCounts);
+    const coordMap = toMap(coordinatorCounts);
+
+    const withCounts = courses.map((c) => {
+      const id = c._id.toString();
+      const enrollment = enrollmentMap.get(id);
+      return {
+        ...c,
+        lectures: lectureMap.get(id) || 0,
+        students: studentMap.get(id) || 0,
+        teachers: teacherMap.get(id) || 0,
+        coordinators: coordMap.get(id) || 0,
+        completedAt: enrollment?.completedAt || null,
+      };
+    });
 
     res.json({ courses: withCounts });
   } catch (error) {
@@ -137,27 +149,29 @@ const createCourse = async (req, res) => {
 const getCourseById = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id)
-      .populate("batch", "name slug");
+      .populate("batch", "name slug")
+      .lean();
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
 
-    const [lectures, assignments, teachers, coordinators, students] = await Promise.all([
+    const [lectureCount, assignmentCount, teachers, coordinators, students] = await Promise.all([
       Lecture.countDocuments({ course: course._id }),
       Assignment.countDocuments({ course: course._id }),
-      CourseTeacher.find({ course: course._id }).populate("teacher", "name email avatar"),
-      CourseCoordinator.find({ course: course._id }).populate("coordinator", "name email avatar"),
+      CourseTeacher.find({ course: course._id }).populate("teacher", "name email avatar").lean(),
+      CourseCoordinator.find({ course: course._id }).populate("coordinator", "name email avatar").lean(),
       CourseStudent.find({ course: course._id })
         .select("student enrolledBy completedAt completedBy")
         .populate("student", "name email avatar")
-        .populate("completedBy", "name"),
+        .populate("completedBy", "name")
+        .lean(),
     ]);
 
     res.json({
       course: {
-        ...course.toObject(),
-        lectureCount: lectures,
-        assignmentCount: assignments,
+        ...course,
+        lectureCount,
+        assignmentCount,
         teachers,
         coordinators,
         students,

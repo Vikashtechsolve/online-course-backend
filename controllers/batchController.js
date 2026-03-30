@@ -20,7 +20,7 @@ const getBatches = async (req, res) => {
       ];
     }
 
-    const batches = await Batch.find(filter).sort({ createdAt: -1 });
+    const batches = await Batch.find(filter).sort({ createdAt: -1 }).lean();
     res.json({ batches });
   } catch (error) {
     console.error("Get batches error:", error);
@@ -62,8 +62,8 @@ const getBatchById = async (req, res) => {
     const id = req.params.id;
     const isObjectId = /^[a-fA-F0-9]{24}$/.test(id);
     const batch = isObjectId
-      ? await Batch.findById(id)
-      : await Batch.findOne({ slug: id });
+      ? await Batch.findById(id).lean()
+      : await Batch.findOne({ slug: id }).lean();
     if (!batch) {
       return res.status(404).json({ message: "Batch not found" });
     }

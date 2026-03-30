@@ -26,7 +26,7 @@ exports.getActiveIntakeBatch = async (req, res) => {
       courseType,
       isActive: true,
       isAcceptingRegistrations: true,
-    }).sort({ batchStartDate: -1, createdAt: -1 });
+    }).sort({ batchStartDate: -1, createdAt: -1 }).lean();
 
     if (!batch) {
       return res.status(404).json({

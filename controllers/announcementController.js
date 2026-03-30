@@ -143,21 +143,17 @@ const listAnnouncements = async (req, res) => {
 const getUnreadAnnouncementsCount = async (req, res) => {
   try {
     if (req.user.role === "student") {
-      const enrollments = await CourseStudent.find({ student: req.user._id }).select("course");
+      const enrollments = await CourseStudent.find({ student: req.user._id }).select("course").lean();
       const courseIds = enrollments.map((e) => e.course);
       if (courseIds.length === 0) {
         return res.json({ unreadCount: 0 });
       }
-      const announcements = await Announcement.find({ course: { $in: courseIds } }).select("_id");
-      const announcementIds = announcements.map((a) => a._id);
-      if (announcementIds.length === 0) {
-        return res.json({ unreadCount: 0 });
-      }
-      const readCount = await AnnouncementRead.countDocuments({
-        student: req.user._id,
-        announcement: { $in: announcementIds },
-      });
-      return res.json({ unreadCount: Math.max(announcementIds.length - readCount, 0) });
+      const announcementFilter = { course: { $in: courseIds } };
+      const [totalCount, readCount] = await Promise.all([
+        Announcement.countDocuments(announcementFilter),
+        AnnouncementRead.countDocuments({ student: req.user._id }),
+      ]);
+      return res.json({ unreadCount: Math.max(totalCount - readCount, 0) });
     }
 
     if (["superadmin", "admin", "coordinator", "teacher"].includes(req.user.role)) {
@@ -165,17 +161,12 @@ const getUnreadAnnouncementsCount = async (req, res) => {
       if (!base || base.empty) {
         return res.json({ unreadCount: 0 });
       }
-      const query = Object.keys(base).length > 0 ? base : {};
-      const announcements = await Announcement.find(query).select("_id");
-      const announcementIds = announcements.map((a) => a._id);
-      if (announcementIds.length === 0) {
-        return res.json({ unreadCount: 0 });
-      }
-      const readCount = await AnnouncementStaffRead.countDocuments({
-        user: req.user._id,
-        announcement: { $in: announcementIds },
-      });
-      return res.json({ unreadCount: Math.max(announcementIds.length - readCount, 0) });
+      const announcementFilter = Object.keys(base).length > 0 ? base : {};
+      const [totalCount, readCount] = await Promise.all([
+        Announcement.countDocuments(announcementFilter),
+        AnnouncementStaffRead.countDocuments({ user: req.user._id }),
+      ]);
+      return res.json({ unreadCount: Math.max(totalCount - readCount, 0) });
     }
 
     return res.json({ unreadCount: 0 });

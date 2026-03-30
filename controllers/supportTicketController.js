@@ -62,7 +62,8 @@ const createTicket = async (req, res) => {
 
     const populated = await SupportTicket.findById(ticket._id)
       .populate("student", "name email")
-      .populate("messages.author", "name email role");
+      .populate("messages.author", "name email role")
+      .lean();
 
     res.status(201).json({ ticket: populated });
   } catch (error) {
@@ -121,7 +122,8 @@ const getTicket = async (req, res) => {
   try {
     const ticket = await SupportTicket.findById(req.params.id)
       .populate("student", "name email")
-      .populate("messages.author", "name email role");
+      .populate("messages.author", "name email role")
+      .lean();
 
     if (!ticket) {
       return res.status(404).json({ message: "Ticket not found" });
@@ -174,7 +176,8 @@ const addStudentReply = async (req, res) => {
 
     const populated = await SupportTicket.findById(ticket._id)
       .populate("student", "name email")
-      .populate("messages.author", "name email role");
+      .populate("messages.author", "name email role")
+      .lean();
 
     res.json({ ticket: populated });
   } catch (error) {
@@ -211,7 +214,8 @@ const addStaffReply = async (req, res) => {
 
     const populated = await SupportTicket.findById(ticket._id)
       .populate("student", "name email")
-      .populate("messages.author", "name email role");
+      .populate("messages.author", "name email role")
+      .lean();
 
     res.json({ ticket: populated });
   } catch (error) {
@@ -252,7 +256,8 @@ const reopenTicket = async (req, res) => {
 
     const populated = await SupportTicket.findById(ticket._id)
       .populate("student", "name email")
-      .populate("messages.author", "name email role");
+      .populate("messages.author", "name email role")
+      .lean();
 
     res.json({ ticket: populated });
   } catch (error) {

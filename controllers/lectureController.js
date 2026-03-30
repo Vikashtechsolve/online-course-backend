@@ -6,6 +6,41 @@ const CourseStudent = require("../models/CourseStudent");
 const { uploadFileAndGetUrl } = require("../services/uploadService");
 const { transcodeAndUploadHLS } = require("../services/hlsService");
 
+// GET /api/lectures/today — today's lectures for a student (single query)
+const getTodayLectures = async (req, res) => {
+  try {
+    const { student } = req.query;
+    if (!student) {
+      return res.status(400).json({ message: "student query param is required" });
+    }
+
+    const enrollments = await CourseStudent.find({ student }).select("course").lean();
+    const courseIds = enrollments.map((e) => e.course);
+    if (courseIds.length === 0) {
+      return res.json({ lectures: [] });
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    const lectures = await Lecture.find({
+      course: { $in: courseIds },
+      scheduledAt: { $gte: todayStart, $lt: tomorrowStart },
+    })
+      .populate("course", "title slug")
+      .populate("teacher", "name email avatar")
+      .sort({ scheduledAt: 1 })
+      .lean();
+
+    res.json({ lectures });
+  } catch (error) {
+    console.error("Get today lectures error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // GET /api/lectures — list lectures (filter by course)
 const getLectures = async (req, res) => {
   try {
@@ -17,7 +52,8 @@ const getLectures = async (req, res) => {
     const lectures = await Lecture.find(filter)
       .populate("course", "title slug batch")
       .populate("teacher", "name email avatar")
-      .sort({ order: 1, scheduledAt: 1 });
+      .sort({ order: 1, scheduledAt: 1 })
+      .lean();
 
     res.json({ lectures });
   } catch (error) {
@@ -78,7 +114,8 @@ const getLectureById = async (req, res) => {
   try {
     const lecture = await Lecture.findById(req.params.id)
       .populate("course", "title slug batch")
-      .populate("teacher", "name email avatar");
+      .populate("teacher", "name email avatar")
+      .lean();
 
     if (!lecture) {
       return res.status(404).json({ message: "Lecture not found" });
@@ -219,7 +256,8 @@ const getDiscussions = async (req, res) => {
   try {
     const discussions = await LectureDiscussion.find({ lecture: req.params.id })
       .populate("user", "name email avatar")
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .lean();
 
     res.json({ discussions });
   } catch (error) {
@@ -272,6 +310,7 @@ const createDiscussion = async (req, res) => {
 };
 
 module.exports = {
+  getTodayLectures,
   getLectures,
   createLecture,
   getLectureById,

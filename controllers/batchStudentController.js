@@ -42,11 +42,12 @@ const getBatchStudents = async (req, res) => {
     const enrollments = await BatchStudent.find(filter)
       .populate("student", "name email phone isActive createdAt")
       .populate("enrolledBy", "name")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     let students = enrollments.map((e) => ({
-      ...e.toObject(),
-      student: { ...e.student.toObject(), batchEnrollmentActive: e.isActive },
+      ...e,
+      student: { ...e.student, batchEnrollmentActive: e.isActive },
     }));
 
     if (search) {

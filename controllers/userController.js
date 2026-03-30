@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { generateToken } = require("../utils/generateToken");
 const { sendWelcomeEmail } = require("../services/emailService");
+const protect = require("../middleware/auth");
 const {
   uploadToR2,
   deleteFromR2,
@@ -179,6 +180,8 @@ const updateUser = async (req, res) => {
       runValidators: true,
     });
 
+    protect.invalidateUser(req.params.id);
+
     res.json({ user: updatedUser.toProfile() });
   } catch (error) {
     console.error("Update user error:", error);
@@ -201,9 +204,10 @@ const deleteUser = async (req, res) => {
         .json({ message: "Cannot delete super admin account" });
     }
 
-    // Soft delete
     user.isActive = false;
     await user.save({ validateBeforeSave: false });
+
+    protect.invalidateUser(req.params.id);
 
     res.json({ message: "User deactivated successfully" });
   } catch (error) {
@@ -250,6 +254,8 @@ const uploadAvatar = async (req, res) => {
     }
 
     await User.findByIdAndUpdate(req.user._id, { avatar: url });
+
+    protect.invalidateUser(req.user._id);
 
     res.json({ avatar: url });
   } catch (error) {

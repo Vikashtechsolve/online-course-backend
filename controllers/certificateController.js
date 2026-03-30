@@ -7,7 +7,8 @@ const getCertificates = async (req, res) => {
   try {
     const certificates = await Certificate.find({ student: req.user._id })
       .populate("course", "title description batch")
-      .sort({ issuedAt: -1 });
+      .sort({ issuedAt: -1 })
+      .lean();
 
     res.json({ certificates });
   } catch (error) {
@@ -21,7 +22,8 @@ const getCertificateById = async (req, res) => {
   try {
     const cert = await Certificate.findById(req.params.id)
       .populate("course", "title description")
-      .populate("student", "name email");
+      .populate("student", "name email")
+      .lean();
 
     if (!cert) {
       return res.status(404).json({ message: "Certificate not found" });

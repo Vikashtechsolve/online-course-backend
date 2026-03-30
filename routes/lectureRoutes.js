@@ -2,6 +2,7 @@ const express = require("express");
 const protect = require("../middleware/auth");
 const { uploadLectureMaterials } = require("../middleware/upload");
 const {
+  getTodayLectures,
   getLectures,
   createLecture,
   getLectureById,
@@ -14,6 +15,7 @@ const {
 
 const router = express.Router();
 
+router.get("/today", protect, getTodayLectures);
 router.get("/", protect, getLectures);
 router.post("/", protect, createLecture);
 router.get("/:id", protect, getLectureById);

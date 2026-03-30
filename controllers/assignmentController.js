@@ -15,15 +15,16 @@ const getAssignments = async (req, res) => {
     let assignments = await Assignment.find(filter)
       .populate("course", "title slug batch")
       .populate("assignedBy", "name email")
-      .sort({ dueDate: 1 });
+      .sort({ dueDate: 1 })
+      .lean();
 
     if (student) {
-      const submissions = await AssignmentSubmission.find({ student });
+      const submissions = await AssignmentSubmission.find({ student }).lean();
       const subMap = new Map(submissions.map((s) => [s.assignment.toString(), s]));
       assignments = assignments.map((a) => {
         const sub = subMap.get(a._id.toString());
         return {
-          ...a.toObject(),
+          ...a,
           submission: sub
             ? {
                 status: sub.status,
@@ -96,7 +97,8 @@ const getAssignmentById = async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
       .populate("course", "title slug batch")
-      .populate("assignedBy", "name email");
+      .populate("assignedBy", "name email")
+      .lean();
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -219,7 +221,8 @@ const getSubmissions = async (req, res) => {
 
     const submissions = await AssignmentSubmission.find({ assignment: req.params.id })
       .populate("student", "name email avatar")
-      .sort({ submittedAt: -1 });
+      .sort({ submittedAt: -1 })
+      .lean();
 
     res.json({ submissions });
   } catch (error) {

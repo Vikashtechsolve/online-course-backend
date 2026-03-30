@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { generateToken, generateResetToken, verifyToken } = require("../utils/generateToken");
 const { sendPasswordResetEmail } = require("../services/emailService");
+const protect = require("../middleware/auth");
 
 // POST /api/auth/login
 const login = async (req, res) => {
@@ -41,7 +42,8 @@ const login = async (req, res) => {
 // GET /api/auth/me
 const getMe = async (req, res) => {
   try {
-    res.json({ user: req.user.toProfile() });
+    const { _id, name, email, phone, role, avatar, isActive, createdAt, updatedAt } = req.user;
+    res.json({ user: { _id, name, email, phone: phone || "", role, avatar, isActive, createdAt, updatedAt } });
   } catch (error) {
     console.error("Get me error:", error);
     res.status(500).json({ message: "Server error" });
@@ -60,9 +62,12 @@ const updateProfile = async (req, res) => {
     const user = await User.findByIdAndUpdate(req.user._id, updates, {
       new: true,
       runValidators: true,
-    });
+    }).lean();
 
-    res.json({ user: user.toProfile() });
+    protect.invalidateUser(req.user._id);
+
+    const { _id, email, role, avatar, isActive, createdAt, updatedAt } = user;
+    res.json({ user: { _id, name: user.name, email, phone: user.phone || "", role, avatar, isActive, createdAt, updatedAt } });
   } catch (error) {
     console.error("Update profile error:", error);
     res.status(500).json({ message: "Server error" });
