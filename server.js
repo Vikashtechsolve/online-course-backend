@@ -23,6 +23,9 @@ const courseLeadRoutes = require("./routes/courseLeadRoutes");
 
 const app = express();
 
+// Railway / Vercel / reverse proxies: correct `req.protocol` and `req.ip` for HTTPS.
+app.set("trust proxy", 1);
+
 connectDB();
 
 // Serve uploaded files (local fallback when R2 is not configured)
@@ -34,15 +37,20 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
  * - `*` or `all` (case-insensitive): any origin allowed (still reflects Origin so credentials work).
  * - Otherwise: comma-separated allowlist, e.g. https://a.com,https://b.com
  */
+const CORS_SHARED = {
+  credentials: true,
+  exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length"],
+};
+
 function corsOptions() {
   const raw = process.env.CORS_ORIGINS;
   const trimmed = raw != null ? String(raw).trim() : "";
   if (!trimmed) {
-    return { origin: true, credentials: true };
+    return { ...CORS_SHARED, origin: true };
   }
   const allowAny = /^(?:\*|all)$/i.test(trimmed);
   if (allowAny) {
-    return { origin: true, credentials: true };
+    return { ...CORS_SHARED, origin: true };
   }
 
   const allowed = trimmed
@@ -51,13 +59,13 @@ function corsOptions() {
     .filter(Boolean);
 
   return {
+    ...CORS_SHARED,
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       const normalized = origin.replace(/\/$/, "");
       if (allowed.includes(normalized)) return callback(null, true);
       callback(null, false);
     },
-    credentials: true,
   };
 }
 
