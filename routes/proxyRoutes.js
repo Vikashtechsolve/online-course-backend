@@ -5,15 +5,49 @@ const router = express.Router();
 
 const R2_PUBLIC = (process.env.R2_PUBLIC_URL || "").replace(/\/$/, "");
 
-/** Public API origin for rewriting HLS playlists (HTTPS). Override if proxy headers are wrong. */
+function isLocalHost(hostHeader) {
+  if (!hostHeader) return true;
+  const host = String(hostHeader).split(":")[0].toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
+/** Protocol as seen by the client (Railway sets X-Forwarded-Proto). */
+function getClientProto(req) {
+  const fwd = (req.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
+  if (fwd === "https" || fwd === "http") return fwd;
+  if (req.secure) return "https";
+  const p = (req.protocol || "http").replace(/:$/, "").toLowerCase();
+  return p === "https" ? "https" : "http";
+}
+
+/**
+ * URLs embedded in rewritten .m3u8 are loaded by hls.js from an HTTPS student app.
+ * They must be `https://` or the browser blocks them (mixed content). Local dev keeps http.
+ */
+function normalizeOriginForEmbeddedUrls(origin, hostHeader) {
+  let o = String(origin).trim().replace(/\/$/, "");
+  if (!o) return o;
+  if (isLocalHost(hostHeader) && o.includes("localhost")) return o;
+  if (isLocalHost(hostHeader) && o.includes("127.0.0.1")) return o;
+  return o.replace(/^http:\/\//i, "https://");
+}
+
+/** Public API origin for rewriting HLS playlists. Segment URLs must match what the SPA can request. */
 function getPublicProxyBase(req) {
-  const explicit = (process.env.PUBLIC_API_ORIGIN || "").trim().replace(/\/$/, "");
-  if (explicit) {
-    return `${explicit}/api/proxy/video`;
-  }
-  const proto = req.protocol || "http";
   const host = req.get("host") || "localhost";
-  return `${proto}://${host}/api/proxy/video`;
+  let origin = (process.env.PUBLIC_API_ORIGIN || "").trim().replace(/\/$/, "");
+
+  if (origin) {
+    origin = normalizeOriginForEmbeddedUrls(origin, host);
+  } else {
+    const proto = getClientProto(req);
+    origin = `${proto}://${host}`;
+    if (!isLocalHost(host)) {
+      origin = origin.replace(/^http:\/\//i, "https://");
+    }
+  }
+
+  return `${origin}/api/proxy/video`;
 }
 
 function isAllowedUrl(url) {
