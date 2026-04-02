@@ -1,7 +1,18 @@
 const path = require("path");
+const os = require("os");
+const crypto = require("crypto");
 const multer = require("multer");
 
 const storage = multer.memoryStorage();
+
+const diskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+  filename: (_req, file, cb) => {
+    const unique = crypto.randomBytes(16).toString("hex");
+    const ext = path.extname(file.originalname) || "";
+    cb(null, `upload-${unique}${ext}`);
+  },
+});
 
 const fileFilter = (req, file, cb) => {
   const allowedImages = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -90,9 +101,9 @@ const uploadCsv = multer({
 }).single("csv");
 
 const uploadLectureMaterials = multer({
-  storage,
+  storage: diskStorage,
   fileFilter,
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
 }).fields([
   { name: "video", maxCount: 1 },
   { name: "notesPdf", maxCount: 1 },

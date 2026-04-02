@@ -15,12 +15,18 @@ const {
 
 const router = express.Router();
 
+function disableTimeout(req, res, next) {
+  req.setTimeout(0);
+  res.setTimeout(0);
+  next();
+}
+
 router.get("/today", protect, getTodayLectures);
 router.get("/", protect, getLectures);
 router.post("/", protect, createLecture);
 router.get("/:id", protect, getLectureById);
 router.put("/:id", protect, updateLecture);
-router.post("/:id/upload", protect, uploadLectureMaterials, uploadHandler);
+router.post("/:id/upload", protect, disableTimeout, uploadLectureMaterials, uploadHandler);
 router.delete("/:id", protect, deleteLecture);
 router.get("/:id/discussions", protect, getDiscussions);
 router.post("/:id/discussions", protect, createDiscussion);

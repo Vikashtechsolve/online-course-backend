@@ -1,3 +1,4 @@
+const fsPromises = require("fs").promises;
 const Lecture = require("../models/Lecture");
 const LectureDiscussion = require("../models/LectureDiscussion");
 const Course = require("../models/Course");
@@ -5,6 +6,15 @@ const CourseTeacher = require("../models/CourseTeacher");
 const CourseStudent = require("../models/CourseStudent");
 const { uploadFileAndGetUrl } = require("../services/uploadService");
 const { transcodeAndUploadHLS } = require("../services/hlsService");
+
+async function cleanupTempFiles(files) {
+  if (!files) return;
+  for (const list of Object.values(files)) {
+    for (const file of list) {
+      if (file.path) await fsPromises.unlink(file.path).catch(() => {});
+    }
+  }
+}
 
 // GET /api/lectures/today — today's lectures for a student (single query)
 const getTodayLectures = async (req, res) => {
@@ -182,6 +192,7 @@ const uploadLectureMaterials = async (req, res) => {
   try {
     const lecture = await Lecture.findById(req.params.id);
     if (!lecture) {
+      await cleanupTempFiles(req.files);
       return res.status(404).json({ message: "Lecture not found" });
     }
 
@@ -191,6 +202,7 @@ const uploadLectureMaterials = async (req, res) => {
     });
     const isAdmin = ["superadmin", "admin", "coordinator"].includes(req.user.role);
     if (!isTeacher && !isAdmin) {
+      await cleanupTempFiles(req.files);
       return res.status(403).json({ message: "You are not assigned to this course" });
     }
 
@@ -198,7 +210,8 @@ const uploadLectureMaterials = async (req, res) => {
 
     if (req.files?.video?.[0]) {
       const videoFile = req.files.video[0];
-      const hlsUrl = await transcodeAndUploadHLS(videoFile.buffer, String(lecture._id));
+      const source = videoFile.path || videoFile.buffer;
+      const hlsUrl = await transcodeAndUploadHLS(source, String(lecture._id));
       updates.videoUrl = hlsUrl || (await uploadFileAndGetUrl(videoFile, "lectures/videos")) || lecture.videoUrl;
     }
     if (req.files?.notesPdf?.[0]) {
@@ -222,6 +235,8 @@ const uploadLectureMaterials = async (req, res) => {
   } catch (error) {
     console.error("Upload lecture materials error:", error);
     res.status(500).json({ message: "Server error" });
+  } finally {
+    await cleanupTempFiles(req.files);
   }
 };
 

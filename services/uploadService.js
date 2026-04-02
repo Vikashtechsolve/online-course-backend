@@ -63,6 +63,21 @@ async function uploadBufferToR2(key, buffer, contentType = "application/octet-st
   return `${process.env.R2_PUBLIC_URL}/${key}`;
 }
 
+/** Stream from disk — avoids loading large segment files into RAM; better for parallel uploads. */
+async function uploadFilePathToR2(key, filePath, contentType = "application/octet-stream") {
+  if (!r2Client || !isR2Configured()) throw new Error("R2 not configured");
+  const fsSync = require("fs");
+  const fileStream = fsSync.createReadStream(filePath);
+  const command = new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME,
+    Key: key,
+    Body: fileStream,
+    ContentType: contentType,
+  });
+  await r2Client.send(command);
+  return `${process.env.R2_PUBLIC_URL}/${key}`;
+}
+
 async function deleteFromR2(key) {
   if (!r2Client || !isR2Configured()) return;
   const command = new DeleteObjectCommand({
@@ -100,8 +115,40 @@ function getApiBaseUrl() {
   return process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
 }
 
+async function uploadFileFromPathAndGetUrl(filePath, originalname, mimetype, folder) {
+  if (!filePath) return null;
+  try {
+    if (isR2Configured()) {
+      const fileStream = require("fs").createReadStream(filePath);
+      const key = generateUniqueKey(folder, originalname);
+      const command = new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: key,
+        Body: fileStream,
+        ContentType: mimetype,
+      });
+      await r2Client.send(command);
+      return `${process.env.R2_PUBLIC_URL}/${key}`;
+    }
+    const key = generateUniqueKey(folder, originalname);
+    const dir = path.join(UPLOADS_DIR, path.dirname(key));
+    await fs.mkdir(dir, { recursive: true });
+    const destPath = path.join(UPLOADS_DIR, key);
+    await fs.copyFile(filePath, destPath);
+    const baseUrl = getApiBaseUrl();
+    return `${baseUrl.replace(/\/$/, "")}/uploads/${key}`;
+  } catch (err) {
+    console.error("Upload from path error:", err);
+    return null;
+  }
+}
+
 async function uploadFileAndGetUrl(file, folder) {
-  if (!file || !file.buffer) return null;
+  if (!file) return null;
+  if (!file.buffer && file.path) {
+    return uploadFileFromPathAndGetUrl(file.path, file.originalname, file.mimetype, folder);
+  }
+  if (!file.buffer) return null;
   try {
     if (isR2Configured()) {
       return (await uploadToR2(file, folder)).url;
@@ -116,6 +163,7 @@ async function uploadFileAndGetUrl(file, folder) {
 module.exports = {
   uploadToR2,
   uploadBufferToR2,
+  uploadFilePathToR2,
   deleteFromR2,
   isR2Configured,
   uploadToLocal,
@@ -123,4 +171,5 @@ module.exports = {
   deleteLocalFile,
   getApiBaseUrl,
   uploadFileAndGetUrl,
+  uploadFileFromPathAndGetUrl,
 };
