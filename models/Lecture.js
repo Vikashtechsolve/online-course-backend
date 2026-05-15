@@ -43,6 +43,16 @@ const lectureSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    videoProcessingStatus: {
+      type: String,
+      enum: ["none", "processing", "ready", "failed"],
+      default: "none",
+    },
+    videoProcessingError: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     notes: {
       image: { type: String, default: "" },
       pdf: { type: String, default: "" },

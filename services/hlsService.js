@@ -8,7 +8,6 @@ const { isR2Configured, uploadFilePathToR2 } = require("./uploadService");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-/** Parallel PUTs to R2 — sequential was a major bottleneck for long videos (many .ts files). */
 const SEGMENT_UPLOAD_CONCURRENCY = Math.min(
   16,
   Math.max(2, parseInt(process.env.HLS_R2_UPLOAD_CONCURRENCY || "8", 10) || 8)
@@ -19,12 +18,54 @@ const HLS_SEGMENT_SECONDS = Math.max(
   parseInt(process.env.HLS_SEGMENT_SECONDS || "10", 10) || 10
 );
 
-/**
- * Build HLS with full transcode (never stream-copy into MPEG-TS).
- * Stream copy (-c copy) often succeeds but causes distorted / slow / "demonic" audio
- * at segment boundaries when source has VFR, odd sample rates, or MP4 edit lists.
- */
-function runHlsFfmpeg(inputPath, outputBase) {
+const HLS_COMMON_OUTPUT = [
+  "-avoid_negative_ts",
+  "make_zero",
+  "-max_muxing_queue_size",
+  "1024",
+  "-start_number",
+  "0",
+  "-hls_time",
+  String(HLS_SEGMENT_SECONDS),
+  "-hls_list_size",
+  "0",
+  "-hls_segment_type",
+  "mpegts",
+  "-hls_flags",
+  "independent_segments",
+  "-f",
+  "hls",
+];
+
+/** Fast path: keep H.264 video, re-encode audio to AAC 48kHz (fixes pitch/sync, much faster than full transcode). */
+function runHlsAudioFix(inputPath, outputBase) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .inputOptions(["-fflags", "+genpts"])
+      .outputOptions([
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-af",
+        "aresample=async=1:first_pts=0",
+        ...HLS_COMMON_OUTPUT,
+      ])
+      .output(`${outputBase}.m3u8`)
+      .on("end", () => resolve())
+      .on("error", (err) => reject(err))
+      .run();
+  });
+}
+
+/** Full transcode when audio-fix / copy is not possible. */
+function runHlsFullTranscode(inputPath, outputBase) {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .inputOptions(["-fflags", "+genpts"])
@@ -49,25 +90,9 @@ function runHlsFfmpeg(inputPath, outputBase) {
         "48000",
         "-ac",
         "2",
-        // Fix drift / pitch issues from messy source timestamps (screen recordings, phone video).
         "-af",
         "aresample=async=1:first_pts=0",
-        "-avoid_negative_ts",
-        "make_zero",
-        "-max_muxing_queue_size",
-        "1024",
-        "-start_number",
-        "0",
-        "-hls_time",
-        String(HLS_SEGMENT_SECONDS),
-        "-hls_list_size",
-        "0",
-        "-hls_segment_type",
-        "mpegts",
-        "-hls_flags",
-        "independent_segments",
-        "-f",
-        "hls",
+        ...HLS_COMMON_OUTPUT,
       ])
       .output(`${outputBase}.m3u8`)
       .on("end", () => resolve())
@@ -78,7 +103,17 @@ function runHlsFfmpeg(inputPath, outputBase) {
 
 async function muxToHlsSegments(inputPath, outputDir, outputBase) {
   await fs.mkdir(outputDir, { recursive: true });
-  await runHlsFfmpeg(inputPath, outputBase);
+  try {
+    await runHlsAudioFix(inputPath, outputBase);
+  } catch (audioFixErr) {
+    console.warn(
+      "[hls] Audio-fix (video copy) failed, full transcode:",
+      audioFixErr.message
+    );
+    await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(outputDir, { recursive: true });
+    await runHlsFullTranscode(inputPath, outputBase);
+  }
 }
 
 async function uploadSegmentsParallel(outputDir, r2Folder) {
@@ -103,12 +138,6 @@ async function uploadSegmentsParallel(outputDir, r2Folder) {
   }
 }
 
-/**
- * Transcode video to HLS and upload segments to R2.
- * @param {Buffer|string} inputSource - Video file buffer or path on disk
- * @param {string} lectureId - Lecture ID for folder path
- * @returns {Promise<string|null>} - URL of the master m3u8, or null on failure
- */
 async function transcodeAndUploadHLS(inputSource, lectureId) {
   if (!isR2Configured()) {
     console.error("R2 not configured; HLS upload skipped");
@@ -127,7 +156,7 @@ async function transcodeAndUploadHLS(inputSource, lectureId) {
       await fs.writeFile(inputPath, inputSource);
     }
 
-    console.log(`[hls] Transcoding lecture ${lectureId} (audio → AAC 48kHz stereo)`);
+    console.log(`[hls] Processing lecture ${lectureId}…`);
     await muxToHlsSegments(inputPath, outputDir, outputBase);
 
     const r2Folder = `lectures/videos/${lectureId}`;

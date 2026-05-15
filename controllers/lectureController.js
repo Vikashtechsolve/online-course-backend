@@ -1,11 +1,13 @@
 const fsPromises = require("fs").promises;
+const path = require("path");
+const os = require("os");
 const Lecture = require("../models/Lecture");
 const LectureDiscussion = require("../models/LectureDiscussion");
 const Course = require("../models/Course");
 const CourseTeacher = require("../models/CourseTeacher");
 const CourseStudent = require("../models/CourseStudent");
 const { uploadFileAndGetUrl } = require("../services/uploadService");
-const { transcodeAndUploadHLS } = require("../services/hlsService");
+const { startLectureVideoProcessing } = require("../services/videoProcessingService");
 
 async function cleanupTempFiles(files) {
   if (!files) return;
@@ -210,9 +212,31 @@ const uploadLectureMaterials = async (req, res) => {
 
     if (req.files?.video?.[0]) {
       const videoFile = req.files.video[0];
-      const source = videoFile.path || videoFile.buffer;
-      const hlsUrl = await transcodeAndUploadHLS(source, String(lecture._id));
-      updates.videoUrl = hlsUrl || (await uploadFileAndGetUrl(videoFile, "lectures/videos")) || lecture.videoUrl;
+      if (!videoFile.path) {
+        await cleanupTempFiles(req.files);
+        return res.status(400).json({ message: "Video upload failed. Please try again." });
+      }
+
+      const ext = path.extname(videoFile.originalname) || ".mp4";
+      const processingPath = path.join(
+        os.tmpdir(),
+        `lecture-${lecture._id}-${Date.now()}${ext}`
+      );
+      await fsPromises.copyFile(videoFile.path, processingPath);
+
+      await Lecture.findByIdAndUpdate(lecture._id, {
+        $set: {
+          videoProcessingStatus: "processing",
+          videoProcessingError: "",
+        },
+      });
+
+      startLectureVideoProcessing(
+        String(lecture._id),
+        processingPath,
+        videoFile.originalname,
+        videoFile.mimetype
+      );
     }
     if (req.files?.notesPdf?.[0]) {
       updates["notes.pdf"] = await uploadFileAndGetUrl(req.files.notesPdf[0], "lectures/notes") || lecture.notes?.pdf;
