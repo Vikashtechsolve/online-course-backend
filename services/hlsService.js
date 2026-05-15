@@ -14,26 +14,21 @@ const SEGMENT_UPLOAD_CONCURRENCY = Math.min(
   Math.max(2, parseInt(process.env.HLS_R2_UPLOAD_CONCURRENCY || "8", 10) || 8)
 );
 
-function runHlsFfmpeg(inputPath, outputBase, mode) {
+const HLS_SEGMENT_SECONDS = Math.max(
+  4,
+  parseInt(process.env.HLS_SEGMENT_SECONDS || "10", 10) || 10
+);
+
+/**
+ * Build HLS with full transcode (never stream-copy into MPEG-TS).
+ * Stream copy (-c copy) often succeeds but causes distorted / slow / "demonic" audio
+ * at segment boundaries when source has VFR, odd sample rates, or MP4 edit lists.
+ */
+function runHlsFfmpeg(inputPath, outputBase) {
   return new Promise((resolve, reject) => {
-    const ff = ffmpeg(inputPath);
-    if (mode === "copy") {
-      ff.outputOptions([
-        "-c",
-        "copy",
-        "-start_number",
-        "0",
-        "-hls_time",
-        "10",
-        "-hls_list_size",
-        "0",
-        "-hls_segment_type",
-        "mpegts",
-        "-f",
-        "hls",
-      ]);
-    } else {
-      ff.outputOptions([
+    ffmpeg(inputPath)
+      .inputOptions(["-fflags", "+genpts"])
+      .outputOptions([
         "-c:v",
         "libx264",
         "-preset",
@@ -41,24 +36,39 @@ function runHlsFfmpeg(inputPath, outputBase, mode) {
         "-crf",
         "23",
         "-profile:v",
-        "baseline",
+        "main",
         "-level",
-        "3.0",
+        "4.0",
+        "-pix_fmt",
+        "yuv420p",
         "-c:a",
         "aac",
         "-b:a",
         "128k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        // Fix drift / pitch issues from messy source timestamps (screen recordings, phone video).
+        "-af",
+        "aresample=async=1:first_pts=0",
+        "-avoid_negative_ts",
+        "make_zero",
+        "-max_muxing_queue_size",
+        "1024",
         "-start_number",
         "0",
         "-hls_time",
-        "10",
+        String(HLS_SEGMENT_SECONDS),
         "-hls_list_size",
         "0",
+        "-hls_segment_type",
+        "mpegts",
+        "-hls_flags",
+        "independent_segments",
         "-f",
         "hls",
-      ]);
-    }
-    ff
+      ])
       .output(`${outputBase}.m3u8`)
       .on("end", () => resolve())
       .on("error", (err) => reject(err))
@@ -68,17 +78,7 @@ function runHlsFfmpeg(inputPath, outputBase, mode) {
 
 async function muxToHlsSegments(inputPath, outputDir, outputBase) {
   await fs.mkdir(outputDir, { recursive: true });
-  try {
-    await runHlsFfmpeg(inputPath, outputBase, "copy");
-  } catch (copyErr) {
-    console.warn(
-      "[hls] Stream copy to HLS failed (codec/container may require re-encode). Transcoding:",
-      copyErr.message
-    );
-    await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
-    await fs.mkdir(outputDir, { recursive: true });
-    await runHlsFfmpeg(inputPath, outputBase, "transcode");
-  }
+  await runHlsFfmpeg(inputPath, outputBase);
 }
 
 async function uploadSegmentsParallel(outputDir, r2Folder) {
@@ -104,7 +104,7 @@ async function uploadSegmentsParallel(outputDir, r2Folder) {
 }
 
 /**
- * Transcode / mux video to HLS and upload segments to R2.
+ * Transcode video to HLS and upload segments to R2.
  * @param {Buffer|string} inputSource - Video file buffer or path on disk
  * @param {string} lectureId - Lecture ID for folder path
  * @returns {Promise<string|null>} - URL of the master m3u8, or null on failure
@@ -127,6 +127,7 @@ async function transcodeAndUploadHLS(inputSource, lectureId) {
       await fs.writeFile(inputPath, inputSource);
     }
 
+    console.log(`[hls] Transcoding lecture ${lectureId} (audio → AAC 48kHz stereo)`);
     await muxToHlsSegments(inputPath, outputDir, outputBase);
 
     const r2Folder = `lectures/videos/${lectureId}`;
