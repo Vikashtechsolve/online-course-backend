@@ -20,6 +20,7 @@ const announcementRoutes = require("./routes/announcementRoutes");
 const supportTicketRoutes = require("./routes/supportTicketRoutes");
 const adminDashboardRoutes = require("./routes/adminDashboardRoutes");
 const courseLeadRoutes = require("./routes/courseLeadRoutes");
+const { handleUploadError } = require("./middleware/handleUploadError");
 
 const app = express();
 
@@ -93,6 +94,8 @@ app.use("/api/announcements", announcementRoutes);
 app.use("/api/tickets", supportTicketRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/course-leads", courseLeadRoutes);
+
+app.use(handleUploadError);
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);

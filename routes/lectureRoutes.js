@@ -1,6 +1,7 @@
 const express = require("express");
 const protect = require("../middleware/auth");
 const { uploadLectureMaterials } = require("../middleware/upload");
+const { wrapMulter } = require("../middleware/handleUploadError");
 const {
   getTodayLectures,
   getLectures,
@@ -26,7 +27,13 @@ router.get("/", protect, getLectures);
 router.post("/", protect, createLecture);
 router.get("/:id", protect, getLectureById);
 router.put("/:id", protect, updateLecture);
-router.post("/:id/upload", protect, disableTimeout, uploadLectureMaterials, uploadHandler);
+router.post(
+  "/:id/upload",
+  protect,
+  disableTimeout,
+  wrapMulter(uploadLectureMaterials),
+  uploadHandler
+);
 router.delete("/:id", protect, deleteLecture);
 router.get("/:id/discussions", protect, getDiscussions);
 router.post("/:id/discussions", protect, createDiscussion);

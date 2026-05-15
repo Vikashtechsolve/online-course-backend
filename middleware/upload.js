@@ -3,6 +3,11 @@ const os = require("os");
 const crypto = require("crypto");
 const multer = require("multer");
 
+const MAX_UPLOAD_BYTES =
+  Math.min(2048, Math.max(1, parseInt(process.env.MAX_UPLOAD_MB || "2048", 10) || 2048)) *
+  1024 *
+  1024;
+
 const storage = multer.memoryStorage();
 
 const diskStorage = multer.diskStorage({
@@ -103,7 +108,7 @@ const uploadCsv = multer({
 const uploadLectureMaterials = multer({
   storage: diskStorage,
   fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 }).fields([
   { name: "video", maxCount: 1 },
   { name: "notesPdf", maxCount: 1 },
