@@ -1,6 +1,4 @@
 const fsPromises = require("fs").promises;
-const path = require("path");
-const os = require("os");
 const Lecture = require("../models/Lecture");
 const LectureDiscussion = require("../models/LectureDiscussion");
 const Course = require("../models/Course");
@@ -9,11 +7,13 @@ const CourseStudent = require("../models/CourseStudent");
 const { uploadFileAndGetUrl } = require("../services/uploadService");
 const { startLectureVideoProcessing } = require("../services/videoProcessingService");
 
-async function cleanupTempFiles(files) {
+async function cleanupTempFiles(files, skipPath) {
   if (!files) return;
   for (const list of Object.values(files)) {
     for (const file of list) {
-      if (file.path) await fsPromises.unlink(file.path).catch(() => {});
+      if (file.path && file.path !== skipPath) {
+        await fsPromises.unlink(file.path).catch(() => {});
+      }
     }
   }
 }
@@ -191,6 +191,7 @@ const updateLecture = async (req, res) => {
 
 // POST /api/lectures/:id/upload — upload materials (video, notes, ppt)
 const uploadLectureMaterials = async (req, res) => {
+  let videoPathDelegated = null;
   try {
     const lecture = await Lecture.findById(req.params.id);
     if (!lecture) {
@@ -214,15 +215,13 @@ const uploadLectureMaterials = async (req, res) => {
       const videoFile = req.files.video[0];
       if (!videoFile.path) {
         await cleanupTempFiles(req.files);
-        return res.status(400).json({ message: "Video upload failed. Please try again." });
+        return res.status(400).json({
+          message:
+            "Video upload failed. Use the admin app with the latest version (direct cloud upload).",
+        });
       }
 
-      const ext = path.extname(videoFile.originalname) || ".mp4";
-      const processingPath = path.join(
-        os.tmpdir(),
-        `lecture-${lecture._id}-${Date.now()}${ext}`
-      );
-      await fsPromises.copyFile(videoFile.path, processingPath);
+      videoPathDelegated = videoFile.path;
 
       await Lecture.findByIdAndUpdate(lecture._id, {
         $set: {
@@ -233,7 +232,7 @@ const uploadLectureMaterials = async (req, res) => {
 
       startLectureVideoProcessing(
         String(lecture._id),
-        processingPath,
+        videoPathDelegated,
         videoFile.originalname,
         videoFile.mimetype
       );
@@ -260,7 +259,7 @@ const uploadLectureMaterials = async (req, res) => {
     console.error("Upload lecture materials error:", error);
     res.status(500).json({ message: "Server error" });
   } finally {
-    await cleanupTempFiles(req.files);
+    await cleanupTempFiles(req.files, videoPathDelegated);
   }
 };
 

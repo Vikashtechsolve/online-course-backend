@@ -1,6 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const os = require("os");
+const { getUploadTempDir } = require("../config/uploadPaths");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
 const crypto = require("crypto");
@@ -145,7 +146,7 @@ async function transcodeAndUploadHLS(inputSource, lectureId) {
   }
 
   const isPath = typeof inputSource === "string";
-  const tmpDir = path.join(os.tmpdir(), `hls-${crypto.randomBytes(8).toString("hex")}`);
+  const tmpDir = path.join(getUploadTempDir(), `hls-${crypto.randomBytes(8).toString("hex")}`);
   const inputPath = isPath ? inputSource : path.join(tmpDir, "input.mp4");
   const outputDir = path.join(tmpDir, "output");
   const outputBase = path.join(outputDir, "playlist");

@@ -1,7 +1,7 @@
 const path = require("path");
-const os = require("os");
 const crypto = require("crypto");
 const multer = require("multer");
+const { getUploadTempDir } = require("../config/uploadPaths");
 
 const MAX_UPLOAD_BYTES =
   Math.min(2048, Math.max(1, parseInt(process.env.MAX_UPLOAD_MB || "2048", 10) || 2048)) *
@@ -11,7 +11,13 @@ const MAX_UPLOAD_BYTES =
 const storage = multer.memoryStorage();
 
 const diskStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+  destination: (_req, _file, cb) => {
+    try {
+      cb(null, getUploadTempDir());
+    } catch (err) {
+      cb(err);
+    }
+  },
   filename: (_req, file, cb) => {
     const unique = crypto.randomBytes(16).toString("hex");
     const ext = path.extname(file.originalname) || "";

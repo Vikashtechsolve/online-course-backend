@@ -13,6 +13,10 @@ const {
   getDiscussions,
   createDiscussion,
 } = require("../controllers/lectureController");
+const {
+  createVideoUploadSession,
+  completeVideoUpload,
+} = require("../controllers/lectureVideoUploadController");
 
 const router = express.Router();
 
@@ -27,6 +31,8 @@ router.get("/", protect, getLectures);
 router.post("/", protect, createLecture);
 router.get("/:id", protect, getLectureById);
 router.put("/:id", protect, updateLecture);
+router.post("/:id/video/upload-session", protect, createVideoUploadSession);
+router.post("/:id/video/complete", protect, completeVideoUpload);
 router.post(
   "/:id/upload",
   protect,

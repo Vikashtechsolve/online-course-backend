@@ -26,7 +26,15 @@ function handleUploadError(err, req, res, next) {
   }
 
   if (err.message) {
-    return res.status(400).json({ message: err.message });
+    const msg = String(err.message);
+    if (/error -122|EDQUOT|ENOSPC|no space left/i.test(msg)) {
+      return res.status(507).json({
+        message:
+          "Server storage is full. Free disk space on the server or use direct cloud upload (redeploy latest backend).",
+        code: "INSUFFICIENT_STORAGE",
+      });
+    }
+    return res.status(400).json({ message: msg });
   }
 
   return next(err);

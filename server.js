@@ -21,8 +21,15 @@ const supportTicketRoutes = require("./routes/supportTicketRoutes");
 const adminDashboardRoutes = require("./routes/adminDashboardRoutes");
 const courseLeadRoutes = require("./routes/courseLeadRoutes");
 const { handleUploadError } = require("./middleware/handleUploadError");
+const { getUploadTempDir } = require("./config/uploadPaths");
 
 const app = express();
+
+try {
+  getUploadTempDir();
+} catch (err) {
+  console.warn("Upload temp directory not ready:", err.message);
+}
 
 // Railway / Vercel / reverse proxies: correct `req.protocol` and `req.ip` for HTTPS.
 app.set("trust proxy", 1);
