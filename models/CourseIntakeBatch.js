@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const COURSE_TYPES = ["fullstack_developer", "data_analytics"];
+const COURSE_TYPES = ["fullstack_developer", "data_analytics", "generative_ai"];
 
 const courseIntakeBatchSchema = new mongoose.Schema(
   {

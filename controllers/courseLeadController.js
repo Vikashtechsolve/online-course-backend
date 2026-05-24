@@ -7,6 +7,7 @@ const { MARKETING_STATUSES } = require("../models/CourseLeadRegistration");
 function courseTypeLabel(type) {
   if (type === "fullstack_developer") return "Full Stack MERN";
   if (type === "data_analytics") return "Data Analytics";
+  if (type === "generative_ai") return "Generative AI";
   return type;
 }
 
