@@ -4,6 +4,8 @@ const authorize = require("../middleware/roleAuth");
 const {
   getActiveIntakeBatch,
   registerCourseLead,
+  initPaidRegistration,
+  completePaidRegistration,
   listIntakeBatches,
   createIntakeBatch,
   updateIntakeBatch,
@@ -18,6 +20,8 @@ const staff = ["superadmin", "admin", "coordinator"];
 
 router.get("/public/active-batch/:courseType", getActiveIntakeBatch);
 router.post("/register", registerCourseLead);
+router.post("/register/init", initPaidRegistration);
+router.post("/register/complete", completePaidRegistration);
 
 router.get("/admin/intake-batches", protect, authorize(...staff), listIntakeBatches);
 router.post("/admin/intake-batches", protect, authorize(...staff), createIntakeBatch);

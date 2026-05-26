@@ -1,4 +1,7 @@
 const { Resend } = require("resend");
+const {
+  buildCourseRegistrationHtml,
+} = require("../templates/courseRegistrationEmail");
 
 let resend;
 
@@ -119,4 +122,93 @@ async function sendWelcomeEmail(toEmail, userName, role, tempPassword) {
   return data;
 }
 
-module.exports = { sendPasswordResetEmail, sendWelcomeEmail };
+async function sendCourseRegistrationEmail(lead, batch) {
+  const client = getResendClient();
+  const supportEmail =
+    process.env.COURSE_SUPPORT_EMAIL || "support@vikastechsolutions.com";
+  const supportPhone = process.env.COURSE_SUPPORT_PHONE || "+91 98765 43210";
+  const websiteUrl =
+    process.env.COURSE_WEBSITE_URL || "https://www.vikashtechsolution.com";
+  const logoUrl = process.env.COURSE_EMAIL_LOGO_URL || "";
+  const lmsUrl =
+    process.env.COURSE_LMS_URL || "https://lms.vikashtechsolution.com/";
+
+  const paymentPlanLabel =
+    lead.paymentPlan === "full_payment"
+      ? "Full payment (10% off)"
+      : lead.paymentPlan === "seat_booking"
+        ? "Seat booking (registration fee)"
+        : lead.paymentPlan || "";
+
+  const nextSteps =
+    lead.paymentPlan === "full_payment"
+      ? "Your registration is fully confirmed. Our team will share onboarding details, LMS access, and batch schedule before the start date."
+      : `Your seat is reserved. Please pay the remaining ₹${lead.balanceDue} course fee before or at batch joining. Our team will guide you on the payment timeline.`;
+
+  const batchStart = batch?.batchStartDate
+    ? new Date(batch.batchStartDate).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Announced soon";
+
+  const html = buildCourseRegistrationHtml({
+    fullName: lead.fullName,
+    courseName: "Generative AI Program",
+    batchName: batch?.displayName || "",
+    batchStart,
+    paymentPlanLabel,
+    amountPaid: lead.amountPaid,
+    balanceDue: lead.balanceDue,
+    paymentId: lead.razorpayPaymentId,
+    nextSteps,
+    supportEmail,
+    supportPhone,
+    websiteUrl,
+    logoUrl,
+    lmsUrl,
+  });
+
+  const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || process.env.SUPER_ADMIN_EMAIL;
+
+  const { data, error } = await client.emails.send({
+    from: process.env.RESEND_FROM_EMAIL,
+    to: lead.email,
+    subject: "Your Generative AI Program Registration is Confirmed",
+    html,
+  });
+
+  if (error) {
+    console.error("Course registration email error:", error);
+    throw new Error(error.message || "Failed to send confirmation email");
+  }
+
+  if (adminEmail) {
+    await client.emails.send({
+      from: process.env.RESEND_FROM_EMAIL,
+      to: adminEmail,
+      subject: `New paid registration: ${lead.fullName} — Generative AI`,
+      html: `
+        <h2>New paid course registration</h2>
+        <p><strong>Name:</strong> ${lead.fullName}</p>
+        <p><strong>Email:</strong> ${lead.email}</p>
+        <p><strong>Phone:</strong> ${lead.phone}</p>
+        <p><strong>Batch:</strong> ${batch?.displayName || ""}</p>
+        <p><strong>Plan:</strong> ${paymentPlanLabel}</p>
+        <p><strong>Amount paid:</strong> ₹${lead.amountPaid}</p>
+        <p><strong>Balance due:</strong> ₹${lead.balanceDue}</p>
+        <p><strong>Payment ID:</strong> ${lead.razorpayPaymentId || ""}</p>
+        <p><strong>Registration ID:</strong> ${lead._id}</p>
+      `,
+    }).catch((e) => console.warn("Admin notify email failed:", e.message));
+  }
+
+  return data;
+}
+
+module.exports = {
+  sendPasswordResetEmail,
+  sendWelcomeEmail,
+  sendCourseRegistrationEmail,
+};

@@ -2,7 +2,23 @@ const ExcelJS = require("exceljs");
 const CourseIntakeBatch = require("../models/CourseIntakeBatch");
 const CourseLeadRegistration = require("../models/CourseLeadRegistration");
 const { COURSE_TYPES } = require("../models/CourseIntakeBatch");
-const { MARKETING_STATUSES } = require("../models/CourseLeadRegistration");
+const {
+  MARKETING_STATUSES,
+  PAYMENT_PLANS,
+} = require("../models/CourseLeadRegistration");
+const {
+  REGISTRATION_FEE,
+  COURSE_FEE,
+  FULL_PAY_DISCOUNT_PERCENT,
+  getAmountForPlan,
+  getBalanceDue,
+  fullPaymentAmount,
+} = require("../constants/genAiFees");
+const {
+  completePaidRegistrationFlow,
+  formatRegistrationResponse,
+  paymentPlanLabel,
+} = require("../services/courseRegistrationComplete");
 
 function courseTypeLabel(type) {
   if (type === "fullstack_developer") return "Full Stack MERN";
@@ -12,7 +28,19 @@ function courseTypeLabel(type) {
 }
 
 function programLabel(p) {
-  return p === "mini" ? "Mini" : p === "macro" ? "Macro" : p;
+  if (p === "mini") return "Mini";
+  if (p === "macro") return "Macro";
+  if (p === "standard") return "Standard";
+  return p;
+}
+
+function allowedProgramsForCourse(courseType) {
+  if (courseType === "generative_ai") return ["standard", "mini", "macro"];
+  return ["mini", "macro"];
+}
+
+function validateProgram(program, courseType) {
+  return allowedProgramsForCourse(courseType).includes(program);
 }
 
 /** GET /api/course-leads/public/active-batch/:courseType */
@@ -78,8 +106,7 @@ exports.registerCourseLead = async (req, res) => {
       });
     }
 
-    const programs = ["mini", "macro"];
-    if (!programs.includes(program)) {
+    if (!validateProgram(program, batch.courseType)) {
       return res.status(400).json({ message: "Invalid program" });
     }
 
@@ -109,6 +136,157 @@ exports.registerCourseLead = async (req, res) => {
   } catch (e) {
     console.error("registerCourseLead", e);
     return res.status(500).json({ message: "Registration failed" });
+  }
+};
+
+/** POST /api/course-leads/register/init — Gen AI paid enrollment (pending until payment completes) */
+exports.initPaidRegistration = async (req, res) => {
+  try {
+    const {
+      intakeBatchId,
+      program,
+      paymentPlan,
+      fullName,
+      email,
+      phone,
+      city,
+      currentStatus,
+      howHeard,
+      message,
+      consentMarketing,
+    } = req.body;
+
+    if (
+      !intakeBatchId ||
+      !program ||
+      !paymentPlan ||
+      !fullName ||
+      !email ||
+      !phone
+    ) {
+      return res.status(400).json({
+        message:
+          "intakeBatchId, program, paymentPlan, fullName, email, and phone are required",
+      });
+    }
+
+    if (!PAYMENT_PLANS.includes(paymentPlan)) {
+      return res.status(400).json({ message: "Invalid payment plan" });
+    }
+
+    const batch = await CourseIntakeBatch.findById(intakeBatchId);
+    if (!batch || !batch.isActive || !batch.isAcceptingRegistrations) {
+      return res.status(400).json({
+        message: "This intake batch is not accepting registrations",
+      });
+    }
+
+    if (batch.courseType !== "generative_ai") {
+      return res.status(400).json({
+        message: "Paid registration is only available for Generative AI",
+      });
+    }
+
+    if (!validateProgram(program, batch.courseType)) {
+      return res.status(400).json({ message: "Invalid program" });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      return res.status(400).json({ message: "Invalid email" });
+    }
+
+    if (!Boolean(consentMarketing)) {
+      return res.status(400).json({ message: "Marketing consent is required" });
+    }
+
+    const amountToPay = getAmountForPlan(paymentPlan);
+    const balanceDue = getBalanceDue(paymentPlan);
+    const discountPercent =
+      paymentPlan === "full_payment" ? FULL_PAY_DISCOUNT_PERCENT : 0;
+
+    const existingPending = await CourseLeadRegistration.findOne({
+      intakeBatch: batch._id,
+      email: emailNorm,
+      paymentStatus: "pending",
+    });
+
+    if (existingPending) {
+      existingPending.fullName = String(fullName).trim();
+      existingPending.phone = String(phone).trim();
+      existingPending.city = city != null ? String(city).trim() : "";
+      existingPending.currentStatus =
+        currentStatus != null ? String(currentStatus).trim() : "";
+      existingPending.howHeard = howHeard != null ? String(howHeard).trim() : "";
+      existingPending.message = message != null ? String(message).trim() : "";
+      existingPending.paymentPlan = paymentPlan;
+      existingPending.registrationFee = REGISTRATION_FEE;
+      existingPending.courseFee = COURSE_FEE;
+      existingPending.discountPercent = discountPercent;
+      existingPending.amountPaid = 0;
+      existingPending.balanceDue = balanceDue;
+      existingPending.consentMarketing = true;
+      await existingPending.save();
+
+      return res.status(200).json({
+        registrationId: existingPending._id,
+        amount: amountToPay,
+        currency: "INR",
+        paymentPlan,
+        courseType: batch.courseType,
+        batchName: batch.displayName,
+      });
+    }
+
+    const lead = await CourseLeadRegistration.create({
+      intakeBatch: batch._id,
+      courseType: batch.courseType,
+      program,
+      fullName: String(fullName).trim(),
+      email: emailNorm,
+      phone: String(phone).trim(),
+      city: city != null ? String(city).trim() : "",
+      currentStatus: currentStatus != null ? String(currentStatus).trim() : "",
+      howHeard: howHeard != null ? String(howHeard).trim() : "",
+      message: message != null ? String(message).trim() : "",
+      consentMarketing: true,
+      marketingStatus: "new",
+      paymentPlan,
+      paymentStatus: "pending",
+      registrationFee: REGISTRATION_FEE,
+      courseFee: COURSE_FEE,
+      discountPercent,
+      amountPaid: 0,
+      balanceDue,
+      currency: "INR",
+    });
+
+    return res.status(201).json({
+      registrationId: lead._id,
+      amount: amountToPay,
+      currency: "INR",
+      paymentPlan,
+      courseType: batch.courseType,
+      batchName: batch.displayName,
+    });
+  } catch (e) {
+    console.error("initPaidRegistration", e);
+    return res.status(500).json({ message: "Could not start registration" });
+  }
+};
+
+/** POST /api/course-leads/register/complete — confirm Razorpay payment */
+exports.completePaidRegistration = async (req, res) => {
+  try {
+    const result = await completePaidRegistrationFlow(req.body);
+    return res.status(result.status).json(result.body);
+  } catch (e) {
+    console.error("completePaidRegistration", e);
+    return res.status(500).json({
+      message:
+        "Could not confirm payment. If you were charged, contact support@vikastechsolutions.com with your payment ID.",
+      supportEmail: "support@vikastechsolutions.com",
+    });
   }
 };
 
@@ -212,6 +390,8 @@ function buildRegistrationFilter(query) {
     courseType,
     program,
     marketingStatus,
+    paymentStatus,
+    paymentPlan,
     search,
     from,
     to,
@@ -221,9 +401,20 @@ function buildRegistrationFilter(query) {
 
   if (intakeBatchId) filter.intakeBatch = intakeBatchId;
   if (courseType && COURSE_TYPES.includes(courseType)) filter.courseType = courseType;
-  if (program && ["mini", "macro"].includes(program)) filter.program = program;
+  if (program && ["mini", "macro", "standard"].includes(program)) {
+    filter.program = program;
+  }
   if (marketingStatus && MARKETING_STATUSES.includes(marketingStatus)) {
     filter.marketingStatus = marketingStatus;
+  }
+  if (
+    paymentStatus &&
+    ["pending", "completed", "failed", "refunded"].includes(paymentStatus)
+  ) {
+    filter.paymentStatus = paymentStatus;
+  }
+  if (paymentPlan && PAYMENT_PLANS.includes(paymentPlan)) {
+    filter.paymentPlan = paymentPlan;
   }
 
   if (search && String(search).trim()) {
@@ -340,6 +531,13 @@ exports.exportRegistrations = async (req, res) => {
       { header: "Message", key: "message", width: 40 },
       { header: "Marketing Consent", key: "consent", width: 14 },
       { header: "Lead Status", key: "marketingStatus", width: 14 },
+      { header: "Payment Plan", key: "paymentPlan", width: 18 },
+      { header: "Payment Status", key: "paymentStatus", width: 14 },
+      { header: "Amount Paid", key: "amountPaid", width: 12 },
+      { header: "Balance Due", key: "balanceDue", width: 12 },
+      { header: "Razorpay Order", key: "razorpayOrderId", width: 22 },
+      { header: "Razorpay Payment", key: "razorpayPaymentId", width: 22 },
+      { header: "Paid At", key: "paidAt", width: 22 },
       { header: "Admin Notes", key: "adminNotes", width: 36 },
     ];
 
@@ -362,6 +560,13 @@ exports.exportRegistrations = async (req, res) => {
         message: r.message || "",
         consent: r.consentMarketing ? "Yes" : "No",
         marketingStatus: r.marketingStatus,
+        paymentPlan: paymentPlanLabel(r.paymentPlan) || "",
+        paymentStatus: r.paymentStatus || "",
+        amountPaid: r.amountPaid ?? "",
+        balanceDue: r.balanceDue ?? "",
+        razorpayOrderId: r.razorpayOrderId || "",
+        razorpayPaymentId: r.razorpayPaymentId || "",
+        paidAt: r.paidAt ? new Date(r.paidAt).toISOString() : "",
         adminNotes: r.adminNotes || "",
       });
     }
