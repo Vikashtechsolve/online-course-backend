@@ -39,47 +39,32 @@ const getCertificateById = async (req, res) => {
   }
 };
 
-// GET /api/certificates/:id/download — stream PDF with proper download headers
+// GET /api/certificates/:id/download — generate fresh PDF from current template
 const downloadCertificate = async (req, res) => {
   try {
     const cert = await Certificate.findById(req.params.id)
-      .populate("course", "title");
+      .populate("course", "title")
+      .populate("student", "name email");
 
     if (!cert) {
       return res.status(404).json({ message: "Certificate not found" });
     }
-    if (cert.student.toString() !== req.user._id.toString()) {
+    if (cert.student._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Access denied" });
-    }
-
-    const pdfUrl = cert.pdfUrl;
-    if (!pdfUrl) {
-      return res.status(404).json({ message: "Certificate PDF not available" });
     }
 
     const safeName = (cert.course?.title || "certificate").replace(/[^a-zA-Z0-9-_]/g, "-");
     const filename = `certificate-${safeName}-${cert.certificateId}.pdf`;
 
+    const buffer = await generateCertificatePDF(
+      cert.student,
+      cert.course,
+      cert.certificateId,
+      cert.issuedAt
+    );
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-
-    const uploadsMatch = pdfUrl.match(/\/uploads\/(.+)$/);
-    if (uploadsMatch) {
-      const relativePath = uploadsMatch[1];
-      const filePath = path.join(process.cwd(), "uploads", relativePath);
-      try {
-        const buffer = await fs.readFile(filePath);
-        return res.send(buffer);
-      } catch {
-        // fallback to fetch if file not found locally
-      }
-    }
-
-    const response = await fetch(pdfUrl, { redirect: "follow" });
-    if (!response.ok) {
-      return res.status(502).json({ message: "Failed to fetch certificate" });
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
     res.send(buffer);
   } catch (error) {
     console.error("Download certificate error:", error);
