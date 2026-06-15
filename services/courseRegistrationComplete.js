@@ -9,7 +9,7 @@ const SUPPORT_EMAIL =
 
 function paymentPlanLabel(plan) {
   if (plan === "seat_booking") return "Seat booking (₹99 now)";
-  if (plan === "full_payment") return "Full payment (10% off)";
+  if (plan === "full_payment") return "Full payment (no registration fee)";
   return plan || "";
 }
 

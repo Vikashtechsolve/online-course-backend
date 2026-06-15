@@ -9,7 +9,6 @@ const {
 const {
   REGISTRATION_FEE,
   COURSE_FEE,
-  FULL_PAY_DISCOUNT_PERCENT,
   getAmountForPlan,
   getBalanceDue,
   fullPaymentAmount,
@@ -202,8 +201,7 @@ exports.initPaidRegistration = async (req, res) => {
 
     const amountToPay = getAmountForPlan(paymentPlan);
     const balanceDue = getBalanceDue(paymentPlan);
-    const discountPercent =
-      paymentPlan === "full_payment" ? FULL_PAY_DISCOUNT_PERCENT : 0;
+    const discountPercent = 0;
 
     const existingPending = await CourseLeadRegistration.findOne({
       intakeBatch: batch._id,

@@ -1,12 +1,11 @@
 /** Server-side Gen AI pricing (do not trust client amounts). */
 const REGISTRATION_FEE = 99;
-const COURSE_FEE = 5999;
-const FULL_PAY_DISCOUNT_PERCENT = 10;
+const COURSE_FEE = 4999;
 
 const PAYMENT_PLANS = ["seat_booking", "full_payment"];
 
 function fullPaymentAmount() {
-  return Math.round(COURSE_FEE * (1 - FULL_PAY_DISCOUNT_PERCENT / 100));
+  return COURSE_FEE;
 }
 
 function getAmountForPlan(paymentPlan) {
@@ -24,7 +23,6 @@ function getBalanceDue(paymentPlan) {
 module.exports = {
   REGISTRATION_FEE,
   COURSE_FEE,
-  FULL_PAY_DISCOUNT_PERCENT,
   PAYMENT_PLANS,
   fullPaymentAmount,
   getAmountForPlan,

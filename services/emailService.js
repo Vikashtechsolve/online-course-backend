@@ -129,13 +129,15 @@ async function sendCourseRegistrationEmail(lead, batch) {
   const supportPhone = process.env.COURSE_SUPPORT_PHONE || "+91 98765 43210";
   const websiteUrl =
     process.env.COURSE_WEBSITE_URL || "https://www.vikashtechsolution.com";
-  const logoUrl = process.env.COURSE_EMAIL_LOGO_URL || "";
+  const logoUrl =
+    process.env.COURSE_EMAIL_LOGO_URL ||
+    "https://www.vikashtechsolution.com/assets/logo-BWnQA1FG.png";
   const lmsUrl =
     process.env.COURSE_LMS_URL || "https://lms.vikashtechsolution.com/";
 
   const paymentPlanLabel =
     lead.paymentPlan === "full_payment"
-      ? "Full payment (10% off)"
+      ? "Full payment (no registration fee)"
       : lead.paymentPlan === "seat_booking"
         ? "Seat booking (registration fee)"
         : lead.paymentPlan || "";
