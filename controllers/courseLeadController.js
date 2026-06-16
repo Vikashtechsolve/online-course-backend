@@ -5,6 +5,7 @@ const { COURSE_TYPES } = require("../models/CourseIntakeBatch");
 const {
   MARKETING_STATUSES,
   PAYMENT_PLANS,
+  PAYMENT_STATUSES,
 } = require("../models/CourseLeadRegistration");
 const {
   REGISTRATION_FEE,
@@ -475,7 +476,15 @@ exports.updateRegistration = async (req, res) => {
       return res.status(404).json({ message: "Registration not found" });
     }
 
-    const { marketingStatus, adminNotes } = req.body;
+    const {
+      marketingStatus,
+      adminNotes,
+      paymentStatus,
+      amountPaid,
+      balanceDue,
+      razorpayPaymentId,
+      paidAt,
+    } = req.body;
 
     if (marketingStatus != null) {
       if (!MARKETING_STATUSES.includes(marketingStatus)) {
@@ -485,6 +494,50 @@ exports.updateRegistration = async (req, res) => {
     }
     if (adminNotes !== undefined) {
       lead.adminNotes = String(adminNotes).slice(0, 4000);
+    }
+
+    if (paymentStatus != null) {
+      if (!PAYMENT_STATUSES.includes(paymentStatus)) {
+        return res.status(400).json({ message: "Invalid paymentStatus" });
+      }
+      lead.paymentStatus = paymentStatus;
+      if (paymentStatus === "completed" && paidAt === undefined && !lead.paidAt) {
+        lead.paidAt = new Date();
+      }
+    }
+
+    if (amountPaid !== undefined) {
+      const n = Number(amountPaid);
+      if (Number.isNaN(n) || n < 0) {
+        return res.status(400).json({ message: "Invalid amountPaid" });
+      }
+      lead.amountPaid = Math.round(n);
+    }
+
+    if (balanceDue !== undefined) {
+      const n = Number(balanceDue);
+      if (Number.isNaN(n) || n < 0) {
+        return res.status(400).json({ message: "Invalid balanceDue" });
+      }
+      lead.balanceDue = Math.round(n);
+    }
+
+    if (razorpayPaymentId !== undefined) {
+      lead.razorpayPaymentId = String(razorpayPaymentId).trim().slice(0, 120);
+    }
+
+    if (paidAt !== undefined) {
+      lead.paidAt = paidAt ? new Date(paidAt) : null;
+    }
+
+    // Sync lead status from payment when admin did not set marketingStatus explicitly
+    if (
+      marketingStatus == null &&
+      lead.paymentStatus === "completed" &&
+      (paymentStatus != null || balanceDue !== undefined)
+    ) {
+      lead.marketingStatus =
+        lead.balanceDue > 0 ? "qualified" : "enrolled";
     }
 
     await lead.save();

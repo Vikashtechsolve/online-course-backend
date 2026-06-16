@@ -1,6 +1,6 @@
 /** Server-side Gen AI pricing (do not trust client amounts). */
-const REGISTRATION_FEE =99;
-const COURSE_FEE = 4999;
+const REGISTRATION_FEE = 99;
+const COURSE_FEE = 5999;
 
 const PAYMENT_PLANS = ["seat_booking", "full_payment"];
 
